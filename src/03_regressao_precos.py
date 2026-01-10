@@ -181,22 +181,48 @@ reg_results['Random Forest'] = {'R²': r2_rf, 'RMSE': rmse_rf, 'MAE': mae_rf}
 print(f"Random Forest (OTIMIZADO) | R²: {r2_rf:.3f} | RMSE: €{rmse_rf:.0f} | MAE: €{mae_rf:.0f}")
 
 # ============================================================================
-# 6. OPORTUNIDADES INVESTIMENTO (subvalorizados)
+# 6. OPORTUNIDADES INVESTIMENTO (subvalorizados, apenas TESTE)
 # ============================================================================
 print("\n" + "="*50)
-print("💰 TOP 10 OPORTUNIDADES (modelo prevê preço > real)")
+print("💰 TOP OPORTUNIDADES (apenas conjunto de TESTE)")
 print("="*50)
 
-best_reg = rf_opt.best_estimator_
-y_pred_all = best_reg.predict(X)
-df['Predicted'] = y_pred_all
-df['Diferenca'] = df['priceByArea'] - df['Predicted']
-df['Economia'] = np.maximum(0, -df['Diferenca'])
+best_reg = reg_models['Random Forest']
 
-oportunidades = df.nlargest(10, 'Economia')
-for i, (_, row) in enumerate(oportunidades.iterrows(), 1):
-    print(f"{i:2d}. 💎 Economia: €{row['Economia']:.0f}/m² | "
-      f"Size: {row['size']:.0f}m² | Zona {row['zona_geografica']} | {row['dist_centro_km']:.2f}km centro")
+# previsões em CV para estimar dispersão típica dos resíduos
+cv_scores = cross_val_score(best_reg, X, y_reg, cv=5, scoring='r2')
+print(f"R² CV (RF otimizado): {cv_scores.mean():.3f} (±{cv_scores.std():.3f})")
+
+# resíduos no teste
+y_pred_test = best_reg.predict(X_test)
+residuos_test = y_test_reg - y_pred_test
+resid_std = residuos_test.std()
+print(f"Desvio-padrão dos resíduos (teste): {resid_std:.2f} €/m²")
+
+# construir DataFrame alinhado com X_test
+df_test = X_test.copy()
+df_test['priceByArea'] = y_test_reg
+df_test['Predicted'] = y_pred_test
+df_test['Diferenca'] = df_test['priceByArea'] - df_test['Predicted']
+df_test['Economia'] = np.maximum(0, -df_test['Diferenca'])
+
+# filtrar apenas casos realmente fora do ruído (resíduo < -1*std)
+df_oportunidades = df_test[df_test['Diferenca'] < -resid_std].copy()
+
+if len(df_oportunidades) == 0:
+    print("⚠️ Nenhuma oportunidade clara (acima de 1 desvio-padrão) no conjunto de teste.")
+else:
+    top_oportunidades = df_oportunidades.nlargest(10, 'Economia')
+    for i, (_, row) in enumerate(top_oportunidades.iterrows(), 1):
+        print(
+            f"{i:2d}. 💎 Economia: €{row['Economia']:.0f}/m² | "
+            f"Size: {row['size']:.0f}m² | Zona {row['zona_geografica']} | "
+            f"{row['dist_centro_km']:.2f}km centro"
+        )
+
+# opcional: guardar oportunidades em CSV
+top_oportunidades.to_csv('../results/oportunidades_teste.csv', index=False)
+print("✅ Salvo: ../results/oportunidades_teste.csv")
 
 
 # ============================================================================
