@@ -145,16 +145,40 @@ print("🔧 OTIMIZAÇÃO Random Forest (RandomizedSearchCV)")
 print("="*50)
 
 param_dist = {
-    'model__n_estimators': randint(50, 200),
-    'model__max_depth': randint(5, 20),
-    'model__min_samples_split': randint(2, 10)
+    'model__n_estimators': randint(80, 250),
+    'model__max_depth': randint(6, 22),
+    'model__min_samples_split': randint(2, 12)
 }
 
-rf_opt = RandomizedSearchCV(reg_models['Random Forest'], param_dist, n_iter=10,
-                            cv=3, scoring='r2', n_jobs=-1, random_state=42, verbose=0)
+rf_base = reg_models['Random Forest']  # pipeline RF base
+
+rf_opt = RandomizedSearchCV(
+    rf_base,
+    param_distributions=param_dist,
+    n_iter=15,
+    cv=3,
+    scoring='r2',
+    n_jobs=-1,
+    random_state=42,
+    verbose=0
+)
+
 rf_opt.fit(X_train, y_train_reg)
 print(f"Melhor R² (CV): {rf_opt.best_score_:.3f}")
 print(f"Melhores params: {rf_opt.best_params_}")
+
+# substituir RF no dicionário pelos melhores parâmetros
+reg_models['Random Forest'] = rf_opt.best_estimator_
+
+# recalcular métricas do RF otimizado no conjunto de teste
+print("\n🔁 Recalculando métricas com Random Forest OTIMIZADO...")
+y_pred_rf_opt = reg_models['Random Forest'].predict(X_test)
+r2_rf = r2_score(y_test_reg, y_pred_rf_opt)
+rmse_rf = np.sqrt(mean_squared_error(y_test_reg, y_pred_rf_opt))
+mae_rf = mean_absolute_error(y_test_reg, y_pred_rf_opt)
+
+reg_results['Random Forest'] = {'R²': r2_rf, 'RMSE': rmse_rf, 'MAE': mae_rf}
+print(f"Random Forest (OTIMIZADO) | R²: {r2_rf:.3f} | RMSE: €{rmse_rf:.0f} | MAE: €{mae_rf:.0f}")
 
 # ============================================================================
 # 6. OPORTUNIDADES INVESTIMENTO (subvalorizados)
