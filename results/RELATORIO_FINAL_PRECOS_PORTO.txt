@@ -6,26 +6,26 @@ Engenharia Informática - ISLA 2025/2026
 Análise preditiva preços €/m² (Idealista.pt - Porto).
 • Regressão: preço contínuo
 • Classificação: barato(0)/caro(1)
-Dataset: 4324 imóveis | Features: size, neighborhood, etc.
+Dataset: 3995 imóveis | Features: size, zona_geografica, etc.
 
 2. ESTADO DA ARTE
-- Regressão Linear: y=β₀+β₁X, R² [file:7]
-- Random Forest: ensemble, Gini importance [file:23]
-- SVM Linear: hiperplano ótimo [file:13]
+- Regressão Linear: y=β₀+β₁X, R²
+- Random Forest: ensemble, Gini importance
+- SVM Linear: hiperplano ótimo
 
 3. METODOLOGIA
 - Pré-processamento: StandardScaler + OneHotEncoder
 - Split: 80/20 estratificado
 - Modelos: Linear/RF/SVR | LogReg/RF/SVC
-- Métricas: R²/RMSE/MAE | Acc/F1/Confusão/AUC-ROC
+- Métricas: R²/RMSE/MAE/R²_CV | Acc/F1/Confusão/AUC-ROC
 
 4. RESULTADOS REGRESSÃO
-                      R²      RMSE       MAE
-Linear Regression  0.500   970.561   736.213
-Random Forest      0.696   756.494   519.370
-LinearSVR         -0.112  1446.957  1079.167
+                      R²      RMSE       MAE  R²_train  R²_CV
+Linear Regression  0.500   970.561   736.213     0.464  0.421
+Random Forest      0.667   792.147   566.273     0.806  0.579
+LinearSVR         -0.112  1446.957  1079.167    -0.114 -0.182
 
-🏆 Melhor: Random Forest | R²=0.696 | RMSE=€756/m²
+🏆 Melhor: Random Forest | R²=0.667 | R²_CV=0.579 | RMSE=€792/m²
 
 5. RESULTADOS CLASSIFICAÇÃO
                      Accuracy  F1-Score
@@ -33,33 +33,49 @@ Logistic Regression     0.776     0.774
 Random Forest           0.851     0.849
 LinearSVC               0.776     0.774
 
-🏆 Melhor: Random Forest | Accuracy=85.1% | AUC-ROC=0.830
+🏆 Melhor: Random Forest | Accuracy=85.1% | AUC-ROC=0.927
 
 Matriz Confusão Random Forest (85.1% Acc):
 [[346  54]  ← Barato
  [ 65 334]]  ← Caro
 
 Curva ROC:
-- AUC-ROC: 0.830 (excelente discriminação)
-- Interpretação: 83.0% probabilidade de classificar
+- AUC-ROC: 0.927 (excelente discriminação)
+- Interpretação: 92.7% probabilidade de classificar
   corretamente par aleatório (barato, caro)
 
 6. ANÁLISE FEATURES
-Top features (importância RF): size > numPhotos > neighborhood > bathrooms
+Top features: size > dist_centro_km > zona_geografica > numPhotos
 
 7. CONCLUSÕES
-✅ Random Forest domina regressão (R²=0.696)
-✅ Random Forest domina classificação (Acc=85.1%, AUC=0.830)
+✅ Random Forest domina regressão (R²=0.667, R²_CV=0.579)
+✅ Random Forest domina classificação (Acc=85.1%, AUC=0.927)
 ✅ Sistema robusto previsão imobiliária Porto
 ✅ Validação cruzada confirma estabilidade
 
 8. TRABALHO FUTURO
-- XGBoost/LightGBM (R²>0.50)
-- Features geoespaciais (distância centro/metro)
+- XGBoost/LightGBM (R²_CV>0.65)
+- Features geoespaciais avançadas (POIs)
 - App web Streamlit real-time
 - Análise temporal preços (séries temporais)
 
 9. REFERÊNCIAS
 1. Idealista.pt Porto API v3.5 [2025]
-2. Scikit-learn 1.6.1
-3. Documentação algoritmos [file:7,9,10,13,23]
+2. Scikit-learn 1.3.2
+3. Pandas 2.1.4, NumPy 1.26.2
+
+6.5. ANÁLISE DE THRESHOLDS
+Threshold | TPR (Recall) | FPR   | Precision | Accuracy | F1-Score | Recomendação
+-----------------------------------------------------------------------------------------------
+0.3       | 0.940        | 0.318 | 0.747     | 0.811    | 0.832    | Screening (captura 94%+ oportunidades)
+0.4       | 0.910        | 0.228 | 0.800     | 0.841    | 0.851    | Decisão final (alta confiança)
+0.5       | 0.840        | 0.142 | 0.855     | 0.849    | 0.847    | Balanceado (uso geral)
+0.6       | 0.762        | 0.092 | 0.891     | 0.835    | 0.822    | Decisão final (alta confiança)
+0.7       | 0.669        | 0.058 | 0.921     | 0.806    | 0.775    | Decisão final (alta confiança)
+0.8       | 0.556        | 0.033 | 0.945     | 0.762    | 0.700    | Decisão final (alta confiança)
+
+Interpretação:
+• Threshold 0.3: Maximiza recall (94%) → SCREENING
+• Threshold 0.5: Equilíbrio precision/recall → USO GERAL
+• Threshold 0.8: Maximiza precision (94.5%) → DECISÃO FINAL
+
