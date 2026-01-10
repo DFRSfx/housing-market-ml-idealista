@@ -1,8 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-03_regressao_precos.py - ANÁLISE PREDITIVA COMPLETA
+03_regressao_precos.py - ANÁLISE PREDITIVA COMPLETA (VERSÃO CORRIGIDA)
 Regressão (Linear, RF, SVR) + Classificação (LogReg, RF, SVC)
 Validação cruzada, otimização hiperparâmetros, oportunidades investimento
+CORREÇÕES:
+- Random Forest otimizado usado de forma consistente
+- Oportunidades calculadas apenas no teste com filtro por incerteza
+- Validação de schema das colunas
+- Métricas train vs test para análise de overfitting
+- Geração automática de threshold analysis
 """
 
 import numpy as np
@@ -16,7 +22,8 @@ from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 from sklearn.svm import LinearSVR, LinearSVC
 from sklearn.metrics import (mean_squared_error, mean_absolute_error, r2_score,
-                             accuracy_score, confusion_matrix, classification_report)
+                             accuracy_score, confusion_matrix, classification_report,
+                             precision_score, recall_score, f1_score)
 import warnings
 from scipy.stats import randint
 import os
@@ -27,17 +34,31 @@ np.random.seed(42)
 if not os.path.exists('../results'):
     os.makedirs('../results')
     print("✅ Diretório ../results/ criado\n")
-    
+
 print("="*80)
-print("ANÁLISE PREDITIVA PREÇOS IMÓVEIS PORTO - VERSÃO FINAL")
+print("ANÁLISE PREDITIVA PREÇOS IMÓVEIS PORTO - VERSÃO FINAL CORRIGIDA")
 print("="*80 + "\n")
 
 # ============================================================================
-# 1. CARREGAR E PREPARAR DADOS
+# 1. CARREGAR E VALIDAR DADOS
 # ============================================================================
 print("1. Carregando dataset limpo...")
 df = pd.read_csv('../datasets/porto_imoveis_dataset.csv')
 print(f"Dataset: {len(df):,} imóveis Porto")
+
+# VALIDAÇÃO DE SCHEMA (evita erros se colunas em falta)
+required_num = ['size', 'rooms', 'bathrooms', 'numPhotos',
+                'dist_centro_km', 'm2_por_quarto', 'densidade_wc']
+required_cat = ['zona_geografica', 'status', 'floor', 'localizacao_premium']
+missing_cols = [c for c in required_num + required_cat if c not in df.columns]
+
+if missing_cols:
+    raise ValueError(
+        f"❌ As seguintes colunas estão em falta no dataset limpo: {missing_cols}.\n"
+        f"Certifica-te que executaste 02_preparar_dataset.py antes deste script."
+    )
+
+print(f"✅ Schema validado. Todas as colunas necessárias estão presentes.\n")
 
 # Feature Engineering
 df['priceByArea'] = df['price'] / df['size']
@@ -46,11 +67,8 @@ df['PriceCategory'] = (df['priceByArea'] > median_price).astype(int)
 print(f"Mediana €/m²: €{median_price:.0f} (limiar barato/caro)")
 
 # Features
-#num_features = ['size', 'rooms', 'bathrooms', 'numPhotos']
-#cat_features = ['neighborhood', 'status', 'floor']
-num_features = ['size', 'rooms', 'bathrooms', 'numPhotos', 
-                'dist_centro_km', 'm2_por_quarto', 'densidade_wc']
-cat_features = ['zona_geografica', 'status', 'floor', 'localizacao_premium']
+num_features = required_num
+cat_features = required_cat
 X = df[num_features + cat_features]
 y_reg = df['priceByArea']
 y_class = df['PriceCategory']
@@ -87,58 +105,19 @@ for name, model in reg_models.items():
     print(f"Treinando {name}...")
     model.fit(X_train, y_train_reg)
     y_pred = model.predict(X_test)
-    
+
     r2 = r2_score(y_test_reg, y_pred)
     rmse = np.sqrt(mean_squared_error(y_test_reg, y_pred))
     mae = mean_absolute_error(y_test_reg, y_pred)
-    
-    reg_results[name] = {'R²': r2, 'RMSE': rmse, 'MAE': mae}
-    print(f"  R²: {r2:.3f} | RMSE: €{rmse:.0f} | MAE: €{mae:.0f}")
 
-# Validação cruzada RF
-print("\n🔍 Validação Cruzada 5-fold (Random Forest):")
-rf_cv = cross_val_score(reg_models['Random Forest'], X, y_reg, cv=5, scoring='r2')
-print(f"  R² médio: {rf_cv.mean():.3f} (±{rf_cv.std():.3f})")
+    # R² treino para análise overfitting
+    r2_train = r2_score(y_train_reg, model.predict(X_train))
+
+    reg_results[name] = {'R²': r2, 'RMSE': rmse, 'MAE': mae, 'R²_train': r2_train}
+    print(f"  R²_test: {r2:.3f} | R²_train: {r2_train:.3f} | RMSE: €{rmse:.0f} | MAE: €{mae:.0f}")
 
 # ============================================================================
-# 4. CLASSIFICAÇÃO (Barato vs Caro)
-# ============================================================================
-print("\n" + "="*50)
-print("CLASSIFICAÇÃO - Barato (0) vs Caro (1)")
-print("="*50)
-
-class_models = {
-    'Logistic Regression': Pipeline([('prep', preprocessor), 
-                                      ('model', LogisticRegression(random_state=42, max_iter=1000))]),
-    'Random Forest': Pipeline([('prep', preprocessor), 
-                               ('model', RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1))]),
-    'LinearSVC': Pipeline([('prep', preprocessor), ('model', LinearSVC(random_state=42, max_iter=1000))])
-}
-
-class_results = {}
-for name, model in class_models.items():
-    print(f"Treinando {name}...")
-    model.fit(X_train, y_train_class)
-    y_pred = model.predict(X_test)
-    
-    acc = accuracy_score(y_test_class, y_pred)
-    report = classification_report(y_test_class, y_pred, output_dict=True)
-    
-    class_results[name] = {
-        'Accuracy': acc,
-        'F1-Score': report['1']['f1-score'],
-        'Confusion Matrix': confusion_matrix(y_test_class, y_pred)
-    }
-    print(f"  Acurácia: {acc:.3f} | F1: {report['1']['f1-score']:.3f}")
-
-rf_class = class_models['Random Forest']
-cm = confusion_matrix(y_test_class, rf_class.predict(X_test))
-print(f"\n📊 Matriz Confusão RF (Accuracy {class_results['Random Forest']['Accuracy']:.1%}):")
-print(f"  [[{cm[0,0]:3d} {cm[0,1]:3d}]  ← Barato")
-print(f"   [{cm[1,0]:3d} {cm[1,1]:3d}]]  ← Caro")
-
-# ============================================================================
-# 5. OTIMIZAÇÃO RANDOM FOREST
+# 4. OTIMIZAÇÃO RANDOM FOREST (substituir o modelo base)
 # ============================================================================
 print("\n" + "="*50)
 print("🔧 OTIMIZAÇÃO Random Forest (RandomizedSearchCV)")
@@ -167,21 +146,27 @@ rf_opt.fit(X_train, y_train_reg)
 print(f"Melhor R² (CV): {rf_opt.best_score_:.3f}")
 print(f"Melhores params: {rf_opt.best_params_}")
 
-# substituir RF no dicionário pelos melhores parâmetros
+# SUBSTITUIR RF no dicionário pelos melhores parâmetros
 reg_models['Random Forest'] = rf_opt.best_estimator_
 
-# recalcular métricas do RF otimizado no conjunto de teste
+# RECALCULAR métricas do RF otimizado no conjunto de teste
 print("\n🔁 Recalculando métricas com Random Forest OTIMIZADO...")
 y_pred_rf_opt = reg_models['Random Forest'].predict(X_test)
 r2_rf = r2_score(y_test_reg, y_pred_rf_opt)
 rmse_rf = np.sqrt(mean_squared_error(y_test_reg, y_pred_rf_opt))
 mae_rf = mean_absolute_error(y_test_reg, y_pred_rf_opt)
+r2_train_rf = r2_score(y_train_reg, reg_models['Random Forest'].predict(X_train))
 
-reg_results['Random Forest'] = {'R²': r2_rf, 'RMSE': rmse_rf, 'MAE': mae_rf}
-print(f"Random Forest (OTIMIZADO) | R²: {r2_rf:.3f} | RMSE: €{rmse_rf:.0f} | MAE: €{mae_rf:.0f}")
+reg_results['Random Forest'] = {'R²': r2_rf, 'RMSE': rmse_rf, 'MAE': mae_rf, 'R²_train': r2_train_rf}
+print(f"Random Forest (OTIMIZADO) | R²_test: {r2_rf:.3f} | R²_train: {r2_train_rf:.3f} | RMSE: €{rmse_rf:.0f} | MAE: €{mae_rf:.0f}")
+
+# Validação cruzada RF otimizado
+print("\n🔍 Validação Cruzada 5-fold (Random Forest OTIMIZADO):")
+rf_cv = cross_val_score(reg_models['Random Forest'], X, y_reg, cv=5, scoring='r2')
+print(f"  R² médio: {rf_cv.mean():.3f} (±{rf_cv.std():.3f})")
 
 # ============================================================================
-# 6. OPORTUNIDADES INVESTIMENTO (subvalorizados, apenas TESTE)
+# 5. OPORTUNIDADES INVESTIMENTO (apenas conjunto de TESTE + filtro incerteza)
 # ============================================================================
 print("\n" + "="*50)
 print("💰 TOP OPORTUNIDADES (apenas conjunto de TESTE)")
@@ -189,19 +174,15 @@ print("="*50)
 
 best_reg = reg_models['Random Forest']
 
-# previsões em CV para estimar dispersão típica dos resíduos
-cv_scores = cross_val_score(best_reg, X, y_reg, cv=5, scoring='r2')
-print(f"R² CV (RF otimizado): {cv_scores.mean():.3f} (±{cv_scores.std():.3f})")
-
 # resíduos no teste
 y_pred_test = best_reg.predict(X_test)
-residuos_test = y_test_reg - y_pred_test
+residuos_test = y_test_reg.values - y_pred_test
 resid_std = residuos_test.std()
 print(f"Desvio-padrão dos resíduos (teste): {resid_std:.2f} €/m²")
 
 # construir DataFrame alinhado com X_test
 df_test = X_test.copy()
-df_test['priceByArea'] = y_test_reg
+df_test['priceByArea'] = y_test_reg.values
 df_test['Predicted'] = y_pred_test
 df_test['Diferenca'] = df_test['priceByArea'] - df_test['Predicted']
 df_test['Economia'] = np.maximum(0, -df_test['Diferenca'])
@@ -213,47 +194,122 @@ if len(df_oportunidades) == 0:
     print("⚠️ Nenhuma oportunidade clara (acima de 1 desvio-padrão) no conjunto de teste.")
 else:
     top_oportunidades = df_oportunidades.nlargest(10, 'Economia')
+    print(f"\n🎯 Encontradas {len(df_oportunidades)} oportunidades potenciais (resíduo < -1 std).")
+    print(f"📋 TOP 10 OPORTUNIDADES:\n")
     for i, (_, row) in enumerate(top_oportunidades.iterrows(), 1):
         print(
             f"{i:2d}. 💎 Economia: €{row['Economia']:.0f}/m² | "
-            f"Size: {row['size']:.0f}m² | Zona {row['zona_geografica']} | "
+            f"Size: {row['size']:.0f}m² | Zona {row.get('zona_geografica', 'N/A')} | "
             f"{row['dist_centro_km']:.2f}km centro"
         )
 
-# opcional: guardar oportunidades em CSV
-top_oportunidades.to_csv('../results/oportunidades_teste.csv', index=False)
-print("✅ Salvo: ../results/oportunidades_teste.csv")
-
+    # opcional: guardar oportunidades em CSV
+    top_oportunidades.to_csv('../results/oportunidades_teste.csv', index=False)
+    print("\n✅ Salvo: ../results/oportunidades_teste.csv")
 
 # ============================================================================
-# 7. VISUALIZAÇÕES COMPLETAS
+# 6. CLASSIFICAÇÃO (Barato vs Caro)
+# ============================================================================
+print("\n" + "="*50)
+print("CLASSIFICAÇÃO - Barato (0) vs Caro (1)")
+print("="*50)
+
+class_models = {
+    'Logistic Regression': Pipeline([('prep', preprocessor), 
+                                      ('model', LogisticRegression(random_state=42, max_iter=1000))]),
+    'Random Forest': Pipeline([('prep', preprocessor), 
+                               ('model', RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1))]),
+    'LinearSVC': Pipeline([('prep', preprocessor), ('model', LinearSVC(random_state=42, max_iter=1000))])
+}
+
+class_results = {}
+for name, model in class_models.items():
+    print(f"Treinando {name}...")
+    model.fit(X_train, y_train_class)
+    y_pred = model.predict(X_test)
+
+    acc = accuracy_score(y_test_class, y_pred)
+    report = classification_report(y_test_class, y_pred, output_dict=True)
+
+    class_results[name] = {
+        'Accuracy': acc,
+        'F1-Score': report['1']['f1-score'],
+        'Confusion Matrix': confusion_matrix(y_test_class, y_pred)
+    }
+    print(f"  Acurácia: {acc:.3f} | F1: {report['1']['f1-score']:.3f}")
+
+rf_class = class_models['Random Forest']
+cm = confusion_matrix(y_test_class, rf_class.predict(X_test))
+print(f"\n📊 Matriz Confusão RF (Accuracy {class_results['Random Forest']['Accuracy']:.1%}):")
+print(f"  [[{cm[0,0]:3d} {cm[0,1]:3d}]  ← Barato")
+print(f"   [{cm[1,0]:3d} {cm[1,1]:3d}]]  ← Caro")
+
+# ============================================================================
+# 7. THRESHOLD ANALYSIS (gerar CSV automaticamente)
+# ============================================================================
+print("\n" + "="*50)
+print("📈 ANÁLISE DE THRESHOLDS (Random Forest Classificação)")
+print("="*50)
+
+y_proba = rf_class.predict_proba(X_test)[:, 1]
+
+thresholds = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
+rows = []
+for thr in thresholds:
+    y_pred_thr = (y_proba >= thr).astype(int)
+    acc_thr = accuracy_score(y_test_class, y_pred_thr)
+    prec_thr = precision_score(y_test_class, y_pred_thr, zero_division=0)
+    rec_thr = recall_score(y_test_class, y_pred_thr, zero_division=0)
+    f1_thr = f1_score(y_test_class, y_pred_thr, zero_division=0)
+
+    # calcular FPR manualmente
+    cm_thr = confusion_matrix(y_test_class, y_pred_thr)
+    tn, fp, fn, tp = cm_thr.ravel()
+    fpr_thr = fp / (fp + tn) if (fp + tn) > 0 else 0
+
+    rows.append({
+        'Threshold': thr,
+        'TPR_Recall': rec_thr,
+        'FPR': fpr_thr,
+        'Precision': prec_thr,
+        'Accuracy': acc_thr,
+        'F1-Score': f1_thr
+    })
+    print(f"Thr={thr:.1f} | Recall={rec_thr:.3f} | FPR={fpr_thr:.3f} | Prec={prec_thr:.3f} | F1={f1_thr:.3f}")
+
+thr_df = pd.DataFrame(rows)
+thr_df.to_csv('../results/threshold_analysis_rf_class.csv', index=False)
+print("\n✅ Salvo: ../results/threshold_analysis_rf_class.csv")
+
+# ============================================================================
+# 8. VISUALIZAÇÕES COMPLETAS
 # ============================================================================
 print("\n📈 Gerando gráficos...")
 fig, axes = plt.subplots(2, 2, figsize=(16, 12))
 fig.suptitle('Análise Completa Preços Imóveis Porto', fontsize=16, fontweight='bold')
 
 # Gráfico 1: R² Regressão
-reg_df = pd.DataFrame(reg_results).T.sort_values('R²', ascending=False)
+reg_df = pd.DataFrame(reg_results).T[['R²', 'RMSE', 'MAE']].sort_values('R²', ascending=False)
 axes[0,0].barh(reg_df.index, reg_df['R²'], color='skyblue')
-axes[0,0].set_title('🏆 R² Regressão')
+axes[0,0].set_title('🏆 R² Regressão (Teste)')
 axes[0,0].set_xlabel('Score')
 for i, v in enumerate(reg_df['R²']):
     axes[0,0].text(v+0.01, i, f'{v:.3f}', va='center')
 
 # Gráfico 2: Acurácia Classificação
-class_df = pd.DataFrame(class_results).T.sort_values('Accuracy', ascending=False)
+class_df = pd.DataFrame(class_results).T[['Accuracy', 'F1-Score']].sort_values('Accuracy', ascending=False)
 axes[0,1].barh(class_df.index, class_df['Accuracy'], color='lightgreen')
 axes[0,1].set_title('📊 Accuracy Classificação')
 axes[0,1].set_xlabel('Score')
 for i, v in enumerate(class_df['Accuracy']):
     axes[0,1].text(v+0.01, i, f'{v:.3f}', va='center')
 
-# Gráfico 3: Real vs Previsto (RF)
-axes[1,0].scatter(y_test_reg, reg_models['Random Forest'].predict(X_test), alpha=0.6)
+# Gráfico 3: Real vs Previsto (RF OTIMIZADO)
+axes[1,0].scatter(y_test_reg, y_pred_rf_opt, alpha=0.6)
 axes[1,0].plot([y_test_reg.min(), y_test_reg.max()], 
                [y_test_reg.min(), y_test_reg.max()], 'r--', lw=2)
-axes[1,0].set_xlabel('Real'), axes[1,0].set_ylabel('Previsto')
-axes[1,0].set_title('RF: Real vs Previsto')
+axes[1,0].set_xlabel('Real (€/m²)'), axes[1,0].set_ylabel('Previsto (€/m²)')
+axes[1,0].set_title(f'RF OTIMIZADO: Real vs Previsto (R²={r2_rf:.3f})')
 
 # Gráfico 4: Matriz Confusão
 im = axes[1,1].imshow(cm, cmap='Blues')
@@ -272,10 +328,10 @@ plt.savefig('../results/resultados_completos.png', dpi=300, bbox_inches='tight')
 print("✅ Salvo: ../results/resultados_completos.png")
 
 # ============================================================================
-# 8. SALVAR RESULTADOS CSV
+# 9. SALVAR RESULTADOS CSV
 # ============================================================================
 pd.DataFrame(reg_results).T.to_csv('../results/comparison.csv')
-pd.DataFrame(class_results).T.to_csv('../results/classification.csv')
+pd.DataFrame(class_results).T.drop(columns=['Confusion Matrix']).to_csv('../results/classification.csv')
 print("✅ Salvo: ../results/comparison.csv | classification.csv\n")
 
 print("="*80)
