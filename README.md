@@ -86,53 +86,6 @@ Ficheiros gerados em results/:
 
     resultados_completos.png → Análise completa 4 painéis
 
-📈 Resultados
-Regressão (Preço €/m²)
-
-| Modelo            | R²     | RMSE (€/m²) | MAE (€/m²) |
-| ----------------- | ------ | ----------- | ---------- |
-| Random Forest     | 0.399  | 1179        | 829        |
-| Linear Regression | 0.210  | 1351        | 1026       |
-| LinearSVR         | -0.466 | 1840        | 1363       |
-
-🏆 Vencedor: Random Forest (R²=0.399, validação cruzada estável)
-Classificação (Barato vs Caro)
-
-| Modelo              | Accuracy | F1-Score |
-| ------------------- | -------- | -------- |
-| Random Forest       | 76.1%    | 0.757    |
-| Logistic Regression | 68.6%    | 0.685    |
-| LinearSVC           | 68.5%    | 0.686    |
-
-🏆 Vencedor: Random Forest (Accuracy=76.1%)
-Matriz Confusão Random Forest
-
-              Previsto
-           Barato  Caro
-Real
-Barato     329     95      (77.6% precisão)
-Caro       108     316     (74.5% recall)
-
-🔍 Análise Features
-
-Top 4 Features Mais Importantes (Random Forest):
-
-    size (47%) - Área do imóvel
-
-    numPhotos (18%) - Qualidade anúncio
-
-    neighborhood (22%) - Localização
-
-    bathrooms (8%) - Conforto
-
-💡 Oportunidades Investimento
-
-Top 10 imóveis subvalorizados (modelo prevê €/m² > preço real):
-
-    Economias entre €1500-3000/m²
-
-    Concentração: Foz Velha, Lordelo do Ouro, Paranhos
-
 🔮 Trabalho Futuro
 
     Implementar XGBoost/LightGBM (alvo R²>0.50)
