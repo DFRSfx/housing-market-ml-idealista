@@ -17,8 +17,15 @@ from sklearn.pipeline import Pipeline
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.tree import plot_tree
 import warnings
+from pathlib import Path
 
 warnings.filterwarnings('ignore')
+
+# Configuração de caminhos robustos
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATASET_PATH = BASE_DIR / "datasets" / "porto_imoveis_dataset.csv"
+RESULTS_DIR = BASE_DIR / "results"
+RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
 print("="*60)
 print("GERAÇÃO RELATÓRIO FINAL - PREÇOS IMÓVEIS PORTO")
@@ -28,8 +35,17 @@ print("="*60 + "\n")
 # 1. CARREGAR RESULTADOS
 # ============================================================================
 print("📂 Carregando resultados...")
-comparison = pd.read_csv('../results/comparison.csv', index_col=0)
-classification = pd.read_csv('../results/classification.csv', index_col=0)
+comparison_csv = RESULTS_DIR / 'comparison.csv'
+classification_csv = RESULTS_DIR / 'classification.csv'
+
+if not comparison_csv.exists() or not classification_csv.exists():
+    raise FileNotFoundError(
+        f"❌ Ficheiros de resultados não encontrados em '{RESULTS_DIR}'.\n"
+        f"Execute primeiro '03_regressao_precos.py'."
+    )
+
+comparison = pd.read_csv(comparison_csv, index_col=0)
+classification = pd.read_csv(classification_csv, index_col=0)
 
 print("\n📊 REGRESSÃO:")
 print(comparison.round(3))
@@ -41,8 +57,10 @@ print(classification[['Accuracy', 'F1-Score']].round(3))
 # ============================================================================
 print("\n🔄 Treinando Random Forest Classifier (matriz confusão + ROC)...")
 
-# Carregar dataset
-df = pd.read_csv('../datasets/porto_imoveis_dataset.csv')
+if not DATASET_PATH.exists():
+    raise FileNotFoundError(f"❌ Dataset não encontrado em '{DATASET_PATH}'.")
+
+df = pd.read_csv(DATASET_PATH)
 df['priceByArea'] = df['price'] / df['size']
 median_price = df['priceByArea'].median()
 df['PriceCategory'] = (df['priceByArea'] > median_price).astype(int)
@@ -87,9 +105,10 @@ print(f"✅ Threshold 0.5: FPR={fpr[idx_threshold_05]:.3f}, TPR={tpr[idx_thresho
 # ============================================================================
 # 3. GERAR RELATÓRIO ESTRUTURADO
 # ============================================================================
-print("\n📝 Gerando RELATORIO_FINAL_PRECOS_PORTO.txt...")
+relatorio_txt = RESULTS_DIR / "RELATORIO_FINAL_PRECOS_PORTO.txt"
+print(f"\n📝 Gerando {relatorio_txt.name}...")
 
-with open("../results/RELATORIO_FINAL_PRECOS_PORTO.txt", "w", encoding='utf-8') as f:
+with open(relatorio_txt, "w", encoding='utf-8') as f:
     f.write("RELATÓRIO FINAL - PREVISÃO PREÇOS IMÓVEIS PORTO\n")
     f.write("Engenharia Informática - ISLA 2025/2026\n")
     f.write("="*70 + "\n\n")
@@ -98,7 +117,7 @@ with open("../results/RELATORIO_FINAL_PRECOS_PORTO.txt", "w", encoding='utf-8') 
     f.write("Análise preditiva preços €/m² (Idealista.pt - Porto).\n")
     f.write("• Regressão: preço contínuo\n")
     f.write("• Classificação: barato(0)/caro(1)\n")
-    f.write("Dataset: 3995 imóveis | Features: size, zona_geografica, etc.\n\n")
+    f.write(f"Dataset: {len(df):,} imóveis | Features: size, zona_geografica, dist_centro_km, etc.\n\n")
     
     f.write("2. ESTADO DA ARTE\n")
     f.write("- Regressão Linear: y=β₀+β₁X, R²\n")
@@ -154,7 +173,7 @@ with open("../results/RELATORIO_FINAL_PRECOS_PORTO.txt", "w", encoding='utf-8') 
     f.write("2. Scikit-learn 1.3.2\n")
     f.write("3. Pandas 2.1.4, NumPy 1.26.2\n")
 
-print("✅ RELATORIO_FINAL_PRECOS_PORTO.txt gerado!")
+print(f"✅ {relatorio_txt.name} gerado!")
 
 # ============================================================================
 # 4. GRÁFICO COMPARAÇÃO (2 painéis)
@@ -177,8 +196,9 @@ for i, v in enumerate(classification['Accuracy'].sort_values(ascending=False)):
     ax2.text(v+0.01, i, f'{v:.3f}', va='center')
 
 plt.tight_layout()
-plt.savefig('../results/RELATORIO_GRAFICO_FINAL.png', dpi=300, bbox_inches='tight')
-print("✅ RELATORIO_GRAFICO_FINAL.png gerado!")
+grafico_final_path = RESULTS_DIR / 'RELATORIO_GRAFICO_FINAL.png'
+plt.savefig(grafico_final_path, dpi=300, bbox_inches='tight')
+print(f"✅ {grafico_final_path.name} gerado!")
 
 # ============================================================================
 # 5. MATRIZ CONFUSÃO (HEATMAP)
@@ -192,8 +212,9 @@ plt.title(f'Matriz Confusão RF (Accuracy {best_acc:.1%})', fontweight='bold', f
 plt.ylabel('Real')
 plt.xlabel('Previsto')
 plt.tight_layout()
-plt.savefig('../results/MATRIZ_CONFUSAO.png', dpi=300, bbox_inches='tight')
-print("✅ MATRIZ_CONFUSAO.png gerado!")
+matriz_confusao_path = RESULTS_DIR / 'MATRIZ_CONFUSAO.png'
+plt.savefig(matriz_confusao_path, dpi=300, bbox_inches='tight')
+print(f"✅ {matriz_confusao_path.name} gerado!")
 
 # ============================================================================
 # 6. CURVA ROC
@@ -220,17 +241,19 @@ plt.plot(fpr[idx_threshold_05], tpr[idx_threshold_05], 'ro', markersize=10,
 plt.legend(loc="lower right", fontsize=10)
 plt.grid(alpha=0.3, linestyle='--')
 plt.tight_layout()
-plt.savefig('../results/CURVA_ROC.png', dpi=300, bbox_inches='tight')
-print("✅ CURVA_ROC.png gerado!")
+curva_roc_path = RESULTS_DIR / 'CURVA_ROC.png'
+plt.savefig(curva_roc_path, dpi=300, bbox_inches='tight')
+print(f"✅ {curva_roc_path.name} gerado!")
 
 # ============================================================================
 # 7. ANÁLISE THRESHOLD (USAR CSV EXISTENTE)
 # ============================================================================
 print("\n📈 Carregando análise de thresholds...")
+threshold_csv = RESULTS_DIR / 'threshold_analysis_rf_class.csv'
 try:
-    threshold_df = pd.read_csv('../results/threshold_analysis_rf_class.csv')
+    threshold_df = pd.read_csv(threshold_csv)
     
-    with open("../results/RELATORIO_FINAL_PRECOS_PORTO.txt", "a", encoding='utf-8') as f:
+    with open(relatorio_txt, "a", encoding='utf-8') as f:
         f.write("\n6.5. ANÁLISE DE THRESHOLDS\n")
         f.write("Threshold | TPR (Recall) | FPR   | Precision | Accuracy | F1-Score | Recomendação\n")
         f.write("-" * 95 + "\n")
@@ -273,11 +296,12 @@ try:
     ax.legend(loc='best')
     ax.grid(alpha=0.3)
     plt.tight_layout()
-    plt.savefig('../results/THRESHOLD_ANALYSIS.png', dpi=300, bbox_inches='tight')
-    print("✅ THRESHOLD_ANALYSIS.png gerado!")
+    threshold_plot_path = RESULTS_DIR / 'THRESHOLD_ANALYSIS.png'
+    plt.savefig(threshold_plot_path, dpi=300, bbox_inches='tight')
+    print(f"✅ {threshold_plot_path.name} gerado!")
     
 except FileNotFoundError:
-    print("⚠️ threshold_analysis_rf_class.csv não encontrado.")
+    print(f"⚠️ {threshold_csv.name} não encontrado.")
 
 # ============================================================================
 # 8. PAINEL COMPLETO 4 GRÁFICOS
@@ -325,8 +349,9 @@ ax4.legend(loc="lower right", fontsize=9)
 ax4.grid(alpha=0.3)
 
 fig.suptitle('Análise Completa - Preços Imóveis Porto', fontsize=16, fontweight='bold', y=0.995)
-plt.savefig('../results/PAINEL_COMPLETO.png', dpi=300, bbox_inches='tight')
-print("✅ PAINEL_COMPLETO.png gerado!")
+painel_completo_path = RESULTS_DIR / 'PAINEL_COMPLETO.png'
+plt.savefig(painel_completo_path, dpi=300, bbox_inches='tight')
+print(f"✅ {painel_completo_path.name} gerado!")
 
 # ============================================================================
 # 9. VISUALIZAÇÃO ÁRVORE INDIVIDUAL
@@ -356,8 +381,9 @@ plt.title('Árvore de Decisão Individual do Random Forest (Profundidade Máx: 4
           'Exemplo de 1 das 100 árvores do ensemble', 
           fontsize=16, fontweight='bold', pad=20)
 plt.tight_layout()
-plt.savefig('../results/ARVORE_RF_INDIVIDUAL.png', dpi=200, bbox_inches='tight')
-print("✅ ARVORE_RF_INDIVIDUAL.png gerado!")
+arvore_path = RESULTS_DIR / 'ARVORE_RF_INDIVIDUAL.png'
+plt.savefig(arvore_path, dpi=200, bbox_inches='tight')
+print(f"✅ {arvore_path.name} gerado!")
 
 # ============================================================================
 # 10. FEATURE IMPORTANCE
@@ -379,8 +405,9 @@ for i, v in enumerate(importances[indices][::-1]):
     plt.text(v + 0.005, i, f'{v:.3f}', va='center', fontsize=9)
 
 plt.tight_layout()
-plt.savefig('../results/FEATURE_IMPORTANCE.png', dpi=300, bbox_inches='tight')
-print("✅ FEATURE_IMPORTANCE.png gerado!")
+feature_importance_path = RESULTS_DIR / 'FEATURE_IMPORTANCE.png'
+plt.savefig(feature_importance_path, dpi=300, bbox_inches='tight')
+print(f"✅ {feature_importance_path.name} gerado!")
 
 # ============================================================================
 # CONCLUSÃO
@@ -404,4 +431,4 @@ print(f"\n🌳 Top 3 Features:")
 indices = np.argsort(rf_model.feature_importances_)[::-1][:3]
 for i, idx in enumerate(indices, 1):
     print(f"  {i}. {all_feature_names[idx]}: {rf_model.feature_importances_[idx]:.3f}")
-print("\n✅ PRONTO PARA ENTREGA ACADÉMICA!")
+print("\n✅ PRONTO PARA APRESENTAÇÃO E PORTFÓLIO!")

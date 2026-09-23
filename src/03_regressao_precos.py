@@ -1,16 +1,8 @@
 # -*- coding: utf-8 -*-
-
 """
-03_regressao_precos.py - ANÁLISE PREDITIVA COMPLETA (VERSÃO CORRIGIDA)
+03_regressao_precos.py - ANÁLISE PREDITIVA COMPLETA
 Regressão (Linear, RF, SVR) + Classificação (LogReg, RF, SVC)
 Validação cruzada, otimização hiperparâmetros, oportunidades investimento
-
-CORREÇÕES:
-- Random Forest otimizado usado de forma consistente
-- Oportunidades calculadas apenas no teste com filtro por incerteza
-- Validação de schema das colunas
-- Métricas train vs test para análise de overfitting
-- Geração automática de threshold analysis
 """
 
 import numpy as np
@@ -29,23 +21,32 @@ from sklearn.metrics import (mean_squared_error, mean_absolute_error, r2_score,
 import warnings
 from scipy.stats import randint
 import os
+from pathlib import Path
 
 warnings.filterwarnings('ignore')
 np.random.seed(42)
 
-if not os.path.exists('../results'):
-    os.makedirs('../results')
-    print("✅ Diretório ../results/ criado\n")
+# Configuração de caminhos robustos
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATASET_PATH = BASE_DIR / "datasets" / "porto_imoveis_dataset.csv"
+RESULTS_DIR = BASE_DIR / "results"
+RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
 print("="*80)
-print("ANÁLISE PREDITIVA PREÇOS IMÓVEIS PORTO - VERSÃO FINAL CORRIGIDA")
+print("ANÁLISE PREDITIVA PREÇOS IMÓVEIS PORTO - PIPELINE DE MACHINE LEARNING")
 print("="*80 + "\n")
 
 # ============================================================================
 # 1. CARREGAR E VALIDAR DADOS
 # ============================================================================
 print("1. Carregando dataset limpo...")
-df = pd.read_csv('../datasets/porto_imoveis_dataset.csv')
+if not DATASET_PATH.exists():
+    raise FileNotFoundError(
+        f"❌ Ficheiro '{DATASET_PATH}' não encontrado.\n"
+        f"Execute primeiro '02_preparar_dataset.py'."
+    )
+
+df = pd.read_csv(DATASET_PATH)
 print(f"Dataset: {len(df):,} imóveis Porto")
 
 # VALIDAÇÃO DE SCHEMA (evita erros se colunas em falta)
@@ -123,7 +124,7 @@ print("\n" + "="*50)
 print("🔧 OTIMIZAÇÃO Random Forest (Grid Search Regularizado)")
 print("="*50)
 
-# TESTE 1: Modelo BASE (atual)
+# TESTE 1: Modelo BASE
 print("\n🔹 Teste 1: Random Forest BASE")
 rf_base = reg_models['Random Forest']
 rf_base.fit(X_train, y_train_reg)
@@ -131,20 +132,20 @@ r2_base_test = r2_score(y_test_reg, rf_base.predict(X_test))
 r2_base_cv = cross_val_score(rf_base, X, y_reg, cv=5, scoring='r2').mean()
 print(f"  R² test: {r2_base_test:.3f} | R² CV: {r2_base_cv:.3f} | GAP: {r2_base_test - r2_base_cv:.3f}")
 
-# TESTE 2: Modelo REGULARIZADO (min_samples_split, max_depth reduzidos)
+# TESTE 2: Modelo REGULARIZADO
 print("\n🔹 Teste 2: Random Forest REGULARIZADO")
 param_dist_reg = {
     'model__n_estimators': randint(100, 200),
-    'model__max_depth': randint(8, 14),  # REDUZIDO (era 6-22)
-    'model__min_samples_split': randint(8, 20),  # AUMENTADO (era 2-12)
-    'model__min_samples_leaf': randint(4, 10)  # NOVO parâmetro
+    'model__max_depth': randint(8, 14),
+    'model__min_samples_split': randint(8, 20),
+    'model__min_samples_leaf': randint(4, 10)
 }
 
 rf_opt = RandomizedSearchCV(
     rf_base,
     param_distributions=param_dist_reg,
-    n_iter=20,  # Aumentado de 15 para 20
-    cv=5,  # 5-fold (era 3)
+    n_iter=20,
+    cv=5,
     scoring='r2',
     n_jobs=-1,
     random_state=42,
@@ -176,7 +177,7 @@ reg_results['Random Forest'] = {
     'RMSE': rmse_rf, 
     'MAE': mae_rf, 
     'R²_train': r2_rf_train,
-    'R²_CV': r2_rf_cv  # NOVO campo
+    'R²_CV': r2_rf_cv
 }
 
 print(f"\nRandom Forest REGULARIZADO | R² test: {r2_rf_test:.3f} | R² CV: {r2_rf_cv:.3f} | RMSE: €{rmse_rf:.0f} | MAE: €{mae_rf:.0f}")
@@ -219,9 +220,10 @@ else:
             f"{row['dist_centro_km']:.2f}km centro"
         )
     
-    # opcional: guardar oportunidades em CSV
-    top_oportunidades.to_csv('../results/oportunidades_teste.csv', index=False)
-    print("\n✅ Salvo: ../results/oportunidades_teste.csv")
+    # salvar oportunidades em CSV
+    output_oportunidades = RESULTS_DIR / 'oportunidades_teste.csv'
+    top_oportunidades.to_csv(output_oportunidades, index=False)
+    print(f"\n✅ Salvo: {output_oportunidades}")
 
 # ============================================================================
 # 6. CLASSIFICAÇÃO (Barato vs Caro)
@@ -292,8 +294,9 @@ for thr in thresholds:
     print(f"Thr={thr:.1f} | Recall={rec_thr:.3f} | FPR={fpr_thr:.3f} | Prec={prec_thr:.3f} | F1={f1_thr:.3f}")
 
 thr_df = pd.DataFrame(rows)
-thr_df.to_csv('../results/threshold_analysis_rf_class.csv', index=False)
-print("\n✅ Salvo: ../results/threshold_analysis_rf_class.csv")
+output_thresholds = RESULTS_DIR / 'threshold_analysis_rf_class.csv'
+thr_df.to_csv(output_thresholds, index=False)
+print(f"\n✅ Salvo: {output_thresholds}")
 
 # ============================================================================
 # 8. VISUALIZAÇÕES COMPLETAS
@@ -338,8 +341,9 @@ axes[1,1].set_yticklabels(['Barato','Caro'])
 axes[1,1].set_xlabel('Previsto'), axes[1,1].set_ylabel('Real')
 
 plt.tight_layout()
-plt.savefig('../results/resultados_completos.png', dpi=300, bbox_inches='tight')
-print("✅ Salvo: ../results/resultados_completos.png")
+output_painel = RESULTS_DIR / 'resultados_completos.png'
+plt.savefig(output_painel, dpi=300, bbox_inches='tight')
+print(f"✅ Salvo: {output_painel}")
 
 # ============================================================================
 # 9. SALVAR RESULTADOS CSV
@@ -350,9 +354,11 @@ for model_name in ['Linear Regression', 'LinearSVR']:
         cv_scores = cross_val_score(reg_models[model_name], X, y_reg, cv=5, scoring='r2')
         reg_results[model_name]['R²_CV'] = cv_scores.mean()
 
-pd.DataFrame(reg_results).T.to_csv('../results/comparison.csv')
-pd.DataFrame(class_results).T.drop(columns=['Confusion Matrix']).to_csv('../results/classification.csv')
-print("✅ Salvo: ../results/comparison.csv | classification.csv (com R²_CV)\n")
+output_comparison = RESULTS_DIR / 'comparison.csv'
+output_classification = RESULTS_DIR / 'classification.csv'
+pd.DataFrame(reg_results).T.to_csv(output_comparison)
+pd.DataFrame(class_results).T.drop(columns=['Confusion Matrix']).to_csv(output_classification)
+print(f"✅ Salvo: {output_comparison} | {output_classification} (com R²_CV)\n")
 
 print("="*80)
 print("🎉 ANÁLISE COMPLETA! Execute 04_relatorio_final.py para gerar relatório.")

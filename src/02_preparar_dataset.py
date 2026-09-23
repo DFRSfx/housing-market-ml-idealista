@@ -9,14 +9,22 @@ Output: porto_imoveis_dataset.csv (limpo)
 import pandas as pd
 import numpy as np
 from sklearn.cluster import KMeans
+from pathlib import Path
+
+# Configuração de caminhos robustos
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATASET_PATH = BASE_DIR / "datasets" / "porto_imoveis_dataset.csv"
 
 print("="*60)
 print("PRÉ-PROCESSAMENTO DATASET IDEALISTA.PT PORTO")
 print("="*60 + "\n")
 
 # 1. Carregar dados raw
-print("📂 Carregando porto_imoveis_dataset.csv...")
-df = pd.read_csv("../datasets/porto_imoveis_dataset.csv")
+print(f"📂 Carregando {DATASET_PATH.name}...")
+if not DATASET_PATH.exists():
+    raise FileNotFoundError(f"❌ Ficheiro não encontrado: {DATASET_PATH}")
+
+df = pd.read_csv(DATASET_PATH)
 print(f"Total imóveis raw: {len(df)}")
 
 # 2. Remover duplicados (propertyCode)
@@ -42,7 +50,7 @@ df = df[(df["priceByArea"] >= q1_pb) & (df["priceByArea"] <= q99_pb)]
 print(f"Após remover outliers (1%-99%): {len(df)}")
 
 # ============================================================================
-# 6. FEATURE ENGINEERING GEOGRÁFICO (NOVO!)
+# 6. FEATURE ENGINEERING GEOGRÁFICO
 # ============================================================================
 print("\n" + "="*60)
 print("🌍 FEATURE ENGINEERING GEOGRÁFICO")
@@ -116,8 +124,8 @@ print(df["zona_geografica"].value_counts().head())
 print("\nStatus imóveis:")
 print(df["status"].value_counts())
 
-# 8. Salvar dataset limpo (sobrescreve)
-df.to_csv("../datasets/porto_imoveis_dataset.csv", index=False)
-print(f"\n✅ Dataset limpo salvo: '../datasets/porto_imoveis_dataset.csv'")
+# 8. Salvar dataset limpo
+df.to_csv(DATASET_PATH, index=False)
+print(f"\n✅ Dataset limpo salvo: '{DATASET_PATH}'")
 print(f"✅ {len(df.columns)} features (originais + {len(df.columns) - 18} novas)")
-print("🚀 Pronto para regressao_precos.py!")
+print("🚀 Pronto para 03_regressao_precos.py!")
